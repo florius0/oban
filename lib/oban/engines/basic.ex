@@ -372,7 +372,7 @@ defmodule Oban.Engines.Basic do
     query =
       Job
       |> where([j], j.state in ^states)
-      |> since_period(period)
+      |> since_period(period, unique)
       |> where(^dynamic)
       |> limit(1)
 
@@ -410,10 +410,30 @@ defmodule Oban.Engines.Basic do
     end
   end
 
-  defp since_period(query, :infinity), do: query
+  defp since_period(query, period_opts, unique) when is_list(period_opts) do
+    Enum.reduce(
+      period_opts,
+      query,
+      fn period, query -> since_period(query, period, unique) end
+    )
+  end
 
-  defp since_period(query, period) do
+  defp since_period(query, {_field, :infinity}, _unique), do: query
+
+  defp since_period(query, {:inserted_at, period}, _unique) do
     where(query, [j], j.inserted_at >= ^seconds_from_now(-period))
+  end
+
+  defp since_period(query, {field, period}, unique) do
+    current_value = Map.get(unique, field)
+
+    query
+    |> where([j], field(j, ^field) <= ^seconds_from(current_value, period))
+    |> where([j], field(j, ^field) >= ^seconds_from(current_value, -period))
+  end
+
+  defp since_period(query, period, unique) when is_atom(period) or is_integer(period) do
+    since_period(query, {:inserted_at, period}, unique)
   end
 
   defp acquire_lock(conf, base_key) do
@@ -436,5 +456,7 @@ defmodule Oban.Engines.Basic do
     end
   end
 
-  defp seconds_from_now(seconds), do: DateTime.add(utc_now(), seconds, :second)
+  defp seconds_from(datetime, seconds), do: DateTime.add(datetime, seconds, :second)
+
+  defp seconds_from_now(seconds), do: seconds_from(utc_now(), seconds)
 end
