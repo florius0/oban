@@ -422,12 +422,8 @@ defmodule Oban.Engines.Basic do
 
   defp since_period(query, {_field, :infinity}, _job), do: query
 
-  defp since_period(query, {:inserted_at, period}, _job) do
-    where(query, [j], j.inserted_at >= ^seconds_from_now(-period))
-  end
-
   defp since_period(query, {field, period}, job) do
-    current_value = Map.get(job, field)
+    current_value = Map.get(job, field) || utc_now()
 
     query
     |> where([j], field(j, ^field) <= ^seconds_from(current_value, period))
